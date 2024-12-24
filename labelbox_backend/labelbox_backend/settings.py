@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from datetime import timedelta
+import os
 from pathlib import Path
 from decouple import config
 import cloudinary
@@ -157,3 +158,4 @@ cloudinary.config(
 
 ALLOWED_FILE_TYPES = ["image/jpeg", "image/png"]
 LIVE_URL = config("LIVE_URL")
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
