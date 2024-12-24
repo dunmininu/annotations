@@ -1,0 +1,22 @@
+lint.select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "PERF", # perflint
+    "PL",   # pylint
+    "UP",   # pyupgrade
+
+]
+
+lint.ignore = ["PERF203"]
+
+exclude = ["labelbox_backend/settings.py"]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"**/migrations/*.py" = ["N806"]
+
+
+[lint.pylint]
+max-args = 8
