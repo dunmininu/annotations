@@ -2,6 +2,8 @@
 # Exit on error
 set -o errexit
 
+cd labelbox_backend
+
 # Install Python dependencies
 pip install -r requirements.txt
 
