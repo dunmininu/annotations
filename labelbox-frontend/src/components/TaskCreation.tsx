@@ -1,8 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Button, CircularProgress, Typography, List, ListItem, ListItemText } from '@mui/material';
+import React from 'react';
+import { 
+  Box, 
+  Button, 
+  CircularProgress, 
+  Typography, 
+  List, 
+  ListItem, 
+  ListItemButton,
+  ListItemText,
+  Alert,
+  styled 
+} from '@mui/material';
 import axiosInstance from '../axiosConfig';
 import { useNavigate } from 'react-router-dom';
 
+// Define our interfaces for better type safety
 interface Task {
   id: string;
   url: string;
@@ -25,138 +37,251 @@ interface TaskCreationProps {
   onTaskSelect: (taskId: string) => void;
 }
 
-const TaskCreation: React.FC<TaskCreationProps> = ({ projectId, onTaskSelect }) => {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loadingTasks, setLoadingTasks] = useState(false);
+// Create a styled input component for better file upload styling
+const VisuallyHiddenInput = styled('input')({
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  height: 1,
+  overflow: 'hidden',
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  whiteSpace: 'nowrap',
+  width: 1,
+});
+
+// Custom hook for authentication
+const useAuth = () => {
   const navigate = useNavigate();
+  const accessToken = sessionStorage.getItem('accessToken');
 
-  const fetchTasks = async () => {
-    setLoadingTasks(true);
-    const accessToken = sessionStorage.getItem('accessToken');
-    if (!accessToken) {
-      setError('Authentication token missing. Please log in again.');
-      navigate('/login');
-      return;
-    }
+  if (!accessToken) {
+    navigate('/login');
+    throw new Error('Authentication token missing. Please log in again.');
+  }
 
+  return accessToken;
+};
+
+// Custom hook to manage tasks state and operations
+const useTasks = (projectId: string) => {
+  const [state, setState] = React.useState<{
+    tasks: Task[];
+    loading: boolean;
+    error: string | null;
+  }>({
+    tasks: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchTasks = React.useCallback(async () => {
+    setState(prev => ({ ...prev, loading: true, error: null }));
+    
     try {
-      let page = 1;
+      const accessToken = useAuth();
       let allTasks: Task[] = [];
-      let nextPage: string | null = `/api/list-tasks/${projectId}?page=${page}`;
+      let currentUrl: string | null = `/api/list-tasks/${projectId}?page=1`;
 
-      while (nextPage) {
-        const response = await axiosInstance.get<TaskResponse>(nextPage, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+      while (currentUrl) {
+        const response = await axiosInstance.get<TaskResponse>(currentUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
 
-        const { data, next } = response.data;
-        allTasks = [...allTasks, ...data];
-        nextPage = next;
-        page += 1;
+        const taskResponse: TaskResponse = response.data;
+        allTasks = [...allTasks, ...taskResponse.data];
+        currentUrl = taskResponse.next;
       }
 
-      setTasks(allTasks);
-    } catch (err) {
-      console.error('Error fetching tasks:', err);
-      setError('Failed to fetch tasks. Please try again.');
-    } finally {
-      setLoadingTasks(false);
+      setState(prev => ({ 
+        ...prev, 
+        tasks: allTasks,
+        loading: false 
+      }));
+    } catch (error) {
+      setState(prev => ({ 
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to fetch tasks',
+        loading: false 
+      }));
     }
-  };
+  }, [projectId]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     fetchTasks();
-  }, [projectId, navigate]);
+  }, [fetchTasks]);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const accessToken = sessionStorage.getItem('accessToken');
-    const file = event.target.files?.[0];
-    if (!file) return;
+  return {
+    ...state,
+    addTask: (newTask: Task) => 
+      setState(prev => ({ ...prev, tasks: [...prev.tasks, newTask] })),
+    clearError: () => 
+      setState(prev => ({ ...prev, error: null })),
+  };
+};
 
-    if (!accessToken) {
-      setError('Authentication token missing. Please log in again.');
-      navigate('/login');
-      return;
-    }
+// Custom hook for file upload and task creation
+const useTaskCreation = (projectId: string, onTaskSelect: (taskId: string) => void) => {
+  const [uploadState, setUploadState] = React.useState<{
+    uploading: boolean;
+    error: string | null;
+  }>({
+    uploading: false,
+    error: null
+  });
 
-    setUploading(true);
-    setError(null);
+  const handleFileUpload = async (file: File, addTask: (task: Task) => void) => {
+    setUploadState({ uploading: true, error: null });
 
     try {
+      const accessToken = useAuth();
       const formData = new FormData();
       formData.append('file', file);
 
-      const uploadResponse = await axiosInstance.post('/api/upload-image/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${accessToken}`,
+      // Upload the image first
+      const uploadResponse = await axiosInstance.post<string>(
+        '/api/upload-image/',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      // Create the task with the uploaded image URL
+      const taskResponse = await axiosInstance.post<Task>(
+        '/api/create-task/',
+        {
+          project_id: projectId,
+          url: uploadResponse.data,
         },
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
+      addTask(taskResponse.data);
+      onTaskSelect(taskResponse.data.id);
+    } catch (error) {
+      setUploadState({
+        uploading: false,
+        error: error instanceof Error ? error.message : 'Failed to create task'
       });
-
-      const uploadedUrl = uploadResponse.data;
-
-      const taskResponse = await axiosInstance.post('/api/create-task/', {
-        project_id: projectId,
-        url: uploadedUrl,
-      }, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      const createdTask = taskResponse.data;
-
-      setTasks((prevTasks) => [...prevTasks, createdTask]);
-      onTaskSelect(createdTask.id);
-    } catch (err) {
-      console.error('Error during file upload or task creation:', err);
-      setError('Failed to upload file or create task. Please try again.');
     } finally {
-      setUploading(false);
+      setUploadState(prev => ({ ...prev, uploading: false }));
     }
   };
 
+  return {
+    ...uploadState,
+    handleFileUpload,
+    setError: (error: string | null) => 
+      setUploadState(prev => ({ ...prev, error }))
+  };
+};
+
+const TaskCreation: React.FC<TaskCreationProps> = ({ projectId, onTaskSelect }) => {
+  const { tasks, loading, error: tasksError, addTask, clearError } = useTasks(projectId);
+  const { 
+    handleFileUpload, 
+    uploading, 
+    error: uploadError, 
+    setError 
+  } = useTaskCreation(projectId, onTaskSelect);
+
+  const onFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload an image file');
+      return;
+    }
+
+    await handleFileUpload(file, addTask);
+  };
+
   return (
-    <Box>
-      <Typography variant="h6" gutterBottom>
+    <Box sx={{ py: 3 }}>
+      <Typography variant="h5" gutterBottom>
         Create a Task
       </Typography>
-      <input
-        type="file"
-        accept="image/*"
-        onChange={handleFileUpload}
-        disabled={uploading}
-        style={{ marginBottom: '1rem' }}
-      />
-      {uploading && <CircularProgress />}
-      {error && (
-        <Typography color="error" variant="body2">
-          {error}
-        </Typography>
-      )}
-      <Button variant="contained" component="label" disabled={uploading}>
-        Upload and Create Task
-        <input type="file" hidden onChange={handleFileUpload} />
-      </Button>
-      <Typography variant="h6" gutterBottom sx={{ marginTop: '2rem' }}>
+
+      <Box sx={{ mb: 4 }}>
+        <Button
+          variant="contained"
+          component="label"
+          disabled={uploading}
+          sx={{ mb: 2 }}
+        >
+          {uploading ? 'Uploading...' : 'Upload Image'}
+          <VisuallyHiddenInput
+            type="file"
+            accept="image/*"
+            onChange={onFileChange}
+          />
+        </Button>
+
+        {uploading && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, my: 2 }}>
+            <CircularProgress size={20} />
+            <Typography>Uploading image and creating task...</Typography>
+          </Box>
+        )}
+
+        {(uploadError || tasksError) && (
+          <Alert 
+            severity="error" 
+            onClose={clearError}
+            sx={{ mt: 2 }}
+          >
+            {uploadError || tasksError}
+          </Alert>
+        )}
+      </Box>
+
+      <Typography variant="h5" gutterBottom sx={{ mt: 4 }}>
         Tasks
       </Typography>
-      {loadingTasks ? (
-        <CircularProgress />
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
       ) : tasks.length > 0 ? (
-        <List>
+        <List sx={{ width: '100%' }}>
           {tasks.map((task) => (
-            <ListItem key={task.id} button onClick={() => onTaskSelect(task.id)}>
-              <ListItemText primary={task.url} />
+            <ListItem 
+              key={task.id} 
+              disablePadding
+              sx={{ mb: 1 }}
+            >
+              <ListItemButton
+                onClick={() => onTaskSelect(task.id)}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'grey.300',
+                  borderRadius: 1,
+                  p: 2,
+                }}
+              >
+                <ListItemText
+                  primary={
+                    <Typography variant="body1" noWrap>
+                      {task.url}
+                    </Typography>
+                  }
+                />
+              </ListItemButton>
             </ListItem>
           ))}
         </List>
       ) : (
-        <Typography variant="body2">No tasks available for this project.</Typography>
+        <Typography color="text.secondary">
+          No tasks available for this project.
+        </Typography>
       )}
     </Box>
   );

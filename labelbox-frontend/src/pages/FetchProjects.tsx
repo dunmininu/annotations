@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   Box,
   Typography,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   CircularProgress,
   Button,
@@ -13,6 +14,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import axiosInstance from '../axiosConfig';
 
+// Define types in a separate interface file for better organization
 interface Project {
   id: number;
   name: string;
@@ -32,34 +34,47 @@ interface ProjectResponse {
   data: Project[];
 }
 
-const FetchProjects: React.FC = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string>('');
-  const [nextPage, setNextPage] = useState<string | null>(null);
-  const [prevPage, setPrevPage] = useState<string | null>(null);
-  const [openModal, setOpenModal] = useState<boolean>(false);
-  const [newProject, setNewProject] = useState({ name: '', description: '' });
+// Custom hook to handle authentication
+const useAuth = () => {
   const navigate = useNavigate();
+  const accessToken = sessionStorage.getItem('accessToken');
 
+  if (!accessToken) {
+    navigate('/login');
+    throw new Error('Authentication token missing. Please log in again.');
+  }
+
+  return accessToken;
+};
+
+const FetchProjects: React.FC = () => {
+  const navigate = useNavigate();
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+  const [pagination, setPagination] = React.useState<{next: string | null; prev: string | null}>({
+    next: null,
+    prev: null
+  });
+  const [modalState, setModalState] = React.useState({
+    open: false,
+    name: '',
+    description: ''
+  });
+
+  // Fetch projects with error handling
   const fetchProjects = async (url: string) => {
-    const accessToken = sessionStorage.getItem('accessToken');
-
-    if (!accessToken) {
-      setError('Authentication token missing. Please log in again.');
-      navigate('/login');
-      return;
-    }
-
     try {
+      const accessToken = useAuth();
       const response = await axiosInstance.get<ProjectResponse>(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` }
       });
+      
       setProjects(response.data.data);
-      setNextPage(response.data.next);
-      setPrevPage(response.data.previous);
+      setPagination({
+        next: response.data.next,
+        prev: response.data.previous
+      });
     } catch (err) {
       setError('Failed to fetch projects. Please try again later.');
     } finally {
@@ -67,50 +82,35 @@ const FetchProjects: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    fetchProjects('/api/projects/?page_index=1&page_size=10');
-  }, []);
-
-  const handlePageChange = (url: string) => {
-    setLoading(true);
-    fetchProjects(url);
-  };
-
-  const handleProjectClick = (projectId: number) => {
-    navigate(`/project-detail/${projectId}`);
-  };
-
+  // Create new project with proper error handling
   const handleCreateProject = async () => {
-    const accessToken = sessionStorage.getItem('accessToken');
-
-    if (!accessToken) {
-      setError('Authentication token missing. Please log in again.');
-      navigate('/login');
-      return;
-    }
-
     try {
+      const accessToken = useAuth();
       const response = await axiosInstance.post<Project>(
         '/api/projects/',
-        { ...newProject },
         {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+          name: modalState.name,
+          description: modalState.description
+        },
+        {
+          headers: { Authorization: `Bearer ${accessToken}` }
         }
       );
 
-      setProjects((prev) => [response.data, ...prev]);
-      setOpenModal(false);
-      setNewProject({ name: '', description: '' });
+      setProjects(prev => [response.data, ...prev]);
+      setModalState({ open: false, name: '', description: '' });
     } catch (err) {
       setError('Failed to create project. Please try again later.');
     }
   };
 
+  React.useEffect(() => {
+    fetchProjects('/api/projects/?page_index=1&page_size=10');
+  }, []);
+
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress />
       </Box>
     );
@@ -118,7 +118,7 @@ const FetchProjects: React.FC = () => {
 
   if (error) {
     return (
-      <Box sx={{ textAlign: 'center', padding: '2rem' }}>
+      <Box textAlign="center" p={4}>
         <Typography color="error" variant="h6" gutterBottom>
           {error}
         </Typography>
@@ -130,19 +130,24 @@ const FetchProjects: React.FC = () => {
   }
 
   return (
-    <Box sx={{ padding: '2rem' }}>
+    <Box p={4}>
       <Typography variant="h4" gutterBottom>
         Projects
       </Typography>
+      
       <Button
         variant="contained"
         color="primary"
-        onClick={() => setOpenModal(true)}
-        sx={{ marginBottom: '1rem' }}
+        onClick={() => setModalState(prev => ({ ...prev, open: true }))}
+        sx={{ mb: 2 }}
       >
         Create New Project
       </Button>
-      <Modal open={openModal} onClose={() => setOpenModal(false)}>
+
+      <Modal
+        open={modalState.open}
+        onClose={() => setModalState(prev => ({ ...prev, open: false }))}
+      >
         <Box
           sx={{
             position: 'absolute',
@@ -153,6 +158,8 @@ const FetchProjects: React.FC = () => {
             p: 4,
             borderRadius: 2,
             boxShadow: 24,
+            width: '90%',
+            maxWidth: 500
           }}
         >
           <Typography variant="h6" gutterBottom>
@@ -161,55 +168,60 @@ const FetchProjects: React.FC = () => {
           <TextField
             fullWidth
             label="Name"
-            value={newProject.name}
-            onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-            sx={{ marginBottom: '1rem' }}
+            value={modalState.name}
+            onChange={(e) => setModalState(prev => ({ ...prev, name: e.target.value }))}
+            sx={{ mb: 2 }}
           />
           <TextField
             fullWidth
             label="Description"
-            value={newProject.description}
-            onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+            value={modalState.description}
+            onChange={(e) => setModalState(prev => ({ ...prev, description: e.target.value }))}
             multiline
             rows={3}
-            sx={{ marginBottom: '1rem' }}
+            sx={{ mb: 2 }}
           />
           <Button variant="contained" onClick={handleCreateProject}>
             Submit
           </Button>
         </Box>
       </Modal>
+
       {projects.length > 0 ? (
         <>
           <List>
             {projects.map((project) => (
               <ListItem
                 key={project.id}
-                button
-                onClick={() => handleProjectClick(project.id)}
-                sx={{
-                  border: '1px solid',
-                  borderColor: 'grey.300',
-                  borderRadius: '4px',
-                  marginBottom: '1rem',
-                  padding: '1rem',
-                }}
+                disablePadding
+                sx={{ mb: 2 }}
               >
-                <ListItemText
-                  primary={project.name}
-                  secondary={`Created At: ${new Date(project.created_at).toLocaleDateString()}`}
-                />
+                <ListItemButton
+                  onClick={() => navigate(`/project-detail/${project.id}`)}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'grey.300',
+                    borderRadius: 1,
+                    p: 2
+                  }}
+                >
+                  <ListItemText
+                    primary={project.name}
+                    secondary={`Created At: ${new Date(project.created_at).toLocaleDateString()}`}
+                  />
+                </ListItemButton>
               </ListItem>
             ))}
           </List>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            {prevPage && (
-              <Button variant="contained" onClick={() => handlePageChange(prevPage)}>
+          
+          <Box display="flex" justifyContent="space-between">
+            {pagination.prev && (
+              <Button variant="contained" onClick={() => fetchProjects(pagination.prev!)}>
                 Previous
               </Button>
             )}
-            {nextPage && (
-              <Button variant="contained" onClick={() => handlePageChange(nextPage)}>
+            {pagination.next && (
+              <Button variant="contained" onClick={() => fetchProjects(pagination.next!)}>
                 Next
               </Button>
             )}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   Container,
   Typography,
@@ -6,12 +6,14 @@ import {
   Button,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   CircularProgress,
 } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axiosInstance from '../axiosConfig';
 
+// Define types in a separate block for better organization
 interface Annotation {
   id: string;
   coordinates: string;
@@ -19,56 +21,115 @@ interface Annotation {
   created_at: string;
 }
 
-const Annotations: React.FC = () => {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const taskId = searchParams.get('taskId');
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string>('');
+interface ApiResponse {
+  data: Annotation[];
+  message?: string;
+}
 
-  useEffect(() => {
+// Custom hook to handle authentication
+const useAuth = () => {
+  const navigate = useNavigate();
+  const accessToken = sessionStorage.getItem('accessToken');
+
+  if (!accessToken) {
+    navigate('/login');
+    throw new Error('Authentication token missing. Please log in again.');
+  }
+
+  return accessToken;
+};
+
+// Custom hook to fetch annotations
+const useAnnotations = (taskId: string | null) => {
+  const [state, setState] = React.useState<{
+    annotations: Annotation[];
+    loading: boolean;
+    error: string;
+  }>({
+    annotations: [],
+    loading: true,
+    error: '',
+  });
+
+  React.useEffect(() => {
     const fetchAnnotations = async () => {
       try {
-        const accessToken = sessionStorage.getItem('accessToken');
-        if (!accessToken) {
-          throw new Error('Authentication token missing. Please log in again.');
-        }
-
+        const accessToken = useAuth();
         const url = taskId
           ? `/api/list-annotations/?taskId=${taskId}`
           : '/api/list-annotations/';
-        const response = await axiosInstance.get<Annotation[]>(url, {
+
+        const response = await axiosInstance.get<ApiResponse>(url, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
         });
-        setAnnotations(response.data);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load annotations. Please try again later.');
-      } finally {
-        setLoading(false);
+
+        setState(prev => ({
+          ...prev,
+          annotations: response.data.data,
+          loading: false,
+        }));
+      } catch (error) {
+        setState(prev => ({
+          ...prev,
+          error: error instanceof Error ? error.message : 'Failed to load annotations',
+          loading: false,
+        }));
       }
     };
 
     fetchAnnotations();
   }, [taskId]);
 
+  return state;
+};
+
+// Format date string in a consistent way
+const formatDate = (dateString: string): string => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const Annotations: React.FC = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const taskId = searchParams.get('taskId');
+  
+  // Use custom hook to manage annotations state
+  const { annotations, loading, error } = useAnnotations(taskId);
+
+  // Loading state with centered spinner
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+      >
         <CircularProgress />
       </Box>
     );
   }
 
+  // Error state with retry option
   if (error) {
     return (
-      <Box sx={{ textAlign: 'center', padding: '2rem' }}>
+      <Box textAlign="center" p={4}>
         <Typography color="error" variant="h6" gutterBottom>
           {error}
         </Typography>
-        <Button variant="contained" onClick={() => navigate('/login')}>
+        <Button 
+          variant="contained" 
+          onClick={() => navigate('/login')}
+          sx={{ mt: 2 }}
+        >
           Log in again
         </Button>
       </Box>
@@ -76,28 +137,52 @@ const Annotations: React.FC = () => {
   }
 
   return (
-    <Container>
-      <Box sx={{ marginTop: '2rem' }}>
+    <Container maxWidth="lg">
+      <Box sx={{ py: 4 }}>
         <Typography variant="h4" gutterBottom>
           Annotations {taskId && `for Task ID: ${taskId}`}
         </Typography>
-        {annotations.length ? (
-          <List>
+
+        {annotations.length > 0 ? (
+          <List sx={{ width: '100%' }}>
             {annotations.map((annotation) => (
               <ListItem
                 key={annotation.id}
-                button
-                onClick={() => navigate(`/annotations/${annotation.id}`)}
+                disablePadding
+                sx={{ mb: 2 }}
               >
-                <ListItemText
-                  primary={`Labels: ${annotation.labels}`}
-                  secondary={`Created at: ${annotation.created_at}`}
-                />
+                <ListItemButton
+                  onClick={() => navigate(`/annotations/${annotation.id}`)}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'grey.300',
+                    borderRadius: 1,
+                    p: 2,
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    },
+                  }}
+                >
+                  <ListItemText
+                    primary={
+                      <Typography variant="subtitle1">
+                        Labels: {annotation.labels}
+                      </Typography>
+                    }
+                    secondary={
+                      <Typography variant="body2" color="text.secondary">
+                        Created at: {formatDate(annotation.created_at)}
+                      </Typography>
+                    }
+                  />
+                </ListItemButton>
               </ListItem>
             ))}
           </List>
         ) : (
-          <Typography>No annotations found.</Typography>
+          <Typography variant="body1" color="text.secondary">
+            No annotations found.
+          </Typography>
         )}
       </Box>
     </Container>
