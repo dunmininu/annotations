@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import QuerySet, Count
+from django.db.models import QuerySet
 from ninja.errors import HttpError
 
 from .dtos import (

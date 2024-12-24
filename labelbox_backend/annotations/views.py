@@ -1,11 +1,9 @@
 from cloudinary import uploader
 from django.conf import settings
+from django.shortcuts import render
 from ninja import File, UploadedFile
-from ninja_extra import Router
-from django.views.generic import TemplateView
-
 from ninja.pagination import paginate
-
+from ninja_extra import Router
 
 from .bearer import JWTBearer
 from .data_types import HttpRequest
@@ -173,5 +171,5 @@ def upload_image(request: HttpRequest, file: UploadedFile = File(...)):
         return 400, {"error": str(e)}
 
 
-class ReactAppView(TemplateView):
-    template_name = "index.html"
+def index(request):
+    return render(request, "index.html")

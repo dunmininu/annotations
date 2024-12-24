@@ -27,9 +27,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = "RENDER" not in os.environ
+
 
 ALLOWED_HOSTS = []
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 
 # Application definition
@@ -84,7 +88,7 @@ WSGI_APPLICATION = "labelbox_backend.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": config("POSTGRES_ENGINE"),
+        "ENGINE": "django.db.backends.postgresql",
         "NAME": config("POSTGRES_NAME"),
         "USER": config("POSTGRES_USER"),
         "PASSWORD": config("POSTGRES_PASSWORD"),
@@ -160,15 +164,16 @@ ALLOWED_FILE_TYPES = ["image/jpeg", "image/png"]
 LIVE_URL = config("LIVE_URL")
 
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "labelbox_backend/static"),
+    os.path.join(BASE_DIR, "../labelbox_backend/static"),
 ]
 
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+# STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATIC_ROOT = "staticfiles"
 
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [os.path.join(BASE_DIR, "labelbox_backend/static")],
+        "DIRS": [os.path.join(BASE_DIR, "staticfiles")],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [

@@ -15,14 +15,23 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.conf import settings
 from django.contrib import admin
 from django.urls import path, re_path
+from django.views.generic import TemplateView
+from django.conf.urls.static import static
 
 from annotations.urls import api
-from labelbox_backend.annotations.views import ReactAppView
+from annotations.views import index
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),
-    re_path(r"^.*$", ReactAppView.as_view(), name="react-app"),
+    re_path(r"^.*$", TemplateView.as_view(template_name="index.html")),
+    path("static/", TemplateView.as_view(template_name="index.html")),
+    # path("", index, name="index"),
 ]
+
+
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
