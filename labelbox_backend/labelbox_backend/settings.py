@@ -158,4 +158,25 @@ cloudinary.config(
 
 ALLOWED_FILE_TYPES = ["image/jpeg", "image/png"]
 LIVE_URL = config("LIVE_URL")
+
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "labelbox_backend/static"),
+]
+
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [os.path.join(BASE_DIR, "labelbox_backend/static")],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]

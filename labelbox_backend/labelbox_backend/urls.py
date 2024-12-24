@@ -16,11 +16,13 @@ Including another URLconf
 """
 
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, re_path
 
 from annotations.urls import api
+from labelbox_backend.annotations.views import ReactAppView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),
+    re_path(r"^.*$", ReactAppView.as_view(), name="react-app"),
 ]
